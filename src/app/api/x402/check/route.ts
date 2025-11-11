@@ -34,9 +34,19 @@ export async function POST(request: NextRequest) {
         {
           verified: false,
           error: 'Invalid transaction signature format',
-          code: 'INVALID_SIGNATURE'
+          code: 'INVALID_SIGNATURE',
+          protocol: 'x402',
+          payment_required: '0.01 SOL'
         },
-        { status: 400 }
+        {
+          status: 402,
+          headers: {
+            'Payment-Required': 'true',
+            'X-Protocol': 'x402',
+            'X-Payment-Amount': X402_PAYMENT_AMOUNT.toString(),
+            'X-Payment-Currency': 'SOL'
+          }
+        }
       )
     }
 
@@ -78,9 +88,19 @@ export async function POST(request: NextRequest) {
           verified: false,
           error: 'Transaction execution failed',
           code: 'TRANSACTION_FAILED',
-          details: transaction.meta.err
+          details: transaction.meta.err,
+          protocol: 'x402',
+          payment_required: `${X402_PAYMENT_AMOUNT} SOL`
         },
-        { status: 400 }
+        {
+          status: 402,
+          headers: {
+            'Payment-Required': 'true',
+            'X-Protocol': 'x402',
+            'X-Payment-Amount': X402_PAYMENT_AMOUNT.toString(),
+            'X-Payment-Currency': 'SOL'
+          }
+        }
       )
     }
 
@@ -168,6 +188,14 @@ export async function POST(request: NextRequest) {
           recipient: recipientAddress,
           protocol: 'x402',
           network: process.env.NEXT_PUBLIC_SOLANA_NETWORK || 'devnet'
+        }, {
+          headers: {
+            'X-Protocol': 'x402',
+            'X-Payment-Verified': 'true',
+            'X-Payment-Amount': balanceChange.toString(),
+            'X-Payment-Currency': 'SOL',
+            'X-Payment-Signature': transactionSignature
+          }
         })
       } else {
         console.error('❌ x402: Insufficient payment amount')
@@ -177,9 +205,20 @@ export async function POST(request: NextRequest) {
             error: 'Insufficient payment amount',
             code: 'INSUFFICIENT_AMOUNT',
             paid: balanceChange,
-            required: requiredAmount
+            required: requiredAmount,
+            protocol: 'x402',
+            payment_required: `${requiredAmount} SOL`
           },
-          { status: 402 } // HTTP 402 Payment Required
+          {
+            status: 402, // HTTP 402 Payment Required
+            headers: {
+              'Payment-Required': 'true',
+              'X-Protocol': 'x402',
+              'X-Payment-Amount': requiredAmount.toString(),
+              'X-Payment-Currency': 'SOL',
+              'X-Payment-Paid': balanceChange.toString()
+            }
+          }
         )
       }
     } else {
@@ -188,9 +227,19 @@ export async function POST(request: NextRequest) {
         {
           verified: false,
           error: 'Unable to verify payment amount - no balance data',
-          code: 'NO_BALANCE_DATA'
+          code: 'NO_BALANCE_DATA',
+          protocol: 'x402',
+          payment_required: `${X402_PAYMENT_AMOUNT} SOL`
         },
-        { status: 400 }
+        {
+          status: 402,
+          headers: {
+            'Payment-Required': 'true',
+            'X-Protocol': 'x402',
+            'X-Payment-Amount': X402_PAYMENT_AMOUNT.toString(),
+            'X-Payment-Currency': 'SOL'
+          }
+        }
       )
     }
 
