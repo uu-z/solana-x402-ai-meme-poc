@@ -284,7 +284,7 @@ class MemeStore {
       console.log('Creating NFT on Solana blockchain...')
 
       // Check if the meme imageUrl is already a FPOImg.com link
-      const isFPOImgLink = meme.imageUrl && meme.imageUrl.includes('fpoimg.com')
+      const isFPOImgLink = Boolean(meme.imageUrl && meme.imageUrl.includes('fpoimg.com'))
       console.log('Meme image URL check:', {
         imageUrl: meme.imageUrl,
         isFPOImgLink

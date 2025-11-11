@@ -223,5 +223,3 @@ export const x402Client = new X402Client()
 // Export the class for custom instances
 export { X402Client }
 
-// Export types
-export type { X402PaymentRequest, X402PaymentResponse, X402Config }

@@ -1,19 +1,13 @@
 import {
   createUmi,
   generateSigner,
-  signerIdentity,
-  createGenericFile,
-  createSignerFromKeypair,
-  base58,
   publicKey,
 } from '@metaplex-foundation/umi'
 import { createUmi as createDefaultUmi } from '@metaplex-foundation/umi-bundle-defaults'
 import {
   createNft,
-  fetchMetadataFromSeeds,
   mplTokenMetadata,
 } from '@metaplex-foundation/mpl-token-metadata'
-import { Connection, Keypair } from '@solana/web3.js'
 import { walletAdapterIdentity } from '@metaplex-foundation/umi-signer-wallet-adapters'
 
 // Real NFT implementation using Metaplex
@@ -82,15 +76,11 @@ export class NFTService {
    * Create NFT metadata JSON
    */
   createMetadata(options: MintNFTOptions): NFTMetadata {
-    // Ensure the image URL is properly formatted for Phantom wallet
-    let imageUrl = options.image
-    if (options.useOriginalImage && options.image && options.image.includes('fpoimg.com')) {
-      // Use the original FPOImg URL directly
-      imageUrl = options.image
-      console.log('Using original FPOImg URL for metadata:', imageUrl)
-    }
+    const imageUrl = (options.useOriginalImage && options.image?.includes('fpoimg.com'))
+      ? options.image
+      : options.image
 
-    const metadata: NFTMetadata = {
+    return {
       name: options.name,
       description: options.description,
       image: imageUrl,
@@ -126,9 +116,6 @@ export class NFTService {
         ],
       },
     }
-
-    console.log('Created NFT metadata:', JSON.stringify(metadata, null, 2))
-    return metadata
   }
 
   
@@ -137,14 +124,9 @@ export class NFTService {
    * Using FPOImg service with custom text and seed
    */
   async getImageUrl(prompt: string, memeText?: string): Promise<string> {
-    // Generate FPOImg URL with prompt text and random seed
-    const text = memeText || prompt.slice(0, 50) // Use meme text or first 50 chars of prompt
-    const seed = Date.now().toString().slice(-6) // Use last 6 digits of timestamp as seed
-
-    const fpoImgUrl = `https://fpoimg.com/1024x1024?text=${encodeURIComponent(text)}&bg_color=e6e6e6&text_color=8F8F8F&random=${seed}`
-
-    console.log('Generated FPOImg URL for NFT:', fpoImgUrl)
-    return fpoImgUrl
+    const text = memeText || prompt.slice(0, 50)
+    const seed = Date.now().toString().slice(-6)
+    return `https://fpoimg.com/1024x1024?text=${encodeURIComponent(text)}&bg_color=e6e6e6&text_color=8F8F8F&random=${seed}`
   }
 
   
@@ -169,66 +151,37 @@ export class NFTService {
     metadataUri: string
     signature?: string
   }> {
-    console.log('Starting NFT minting for:', options.name)
-    console.log('Creator:', options.creatorPublicKey)
+    if (!this.umi) {
+      throw new Error('NFT service not initialized')
+    }
+
+    const hasEnoughSOL = await this.checkBalance(0.01)
+    if (!hasEnoughSOL) {
+      throw new Error('Insufficient SOL balance for minting')
+    }
 
     try {
-      // Verify wallet is initialized
-      if (!this.umi) {
-        throw new Error('NFT service not initialized. Please call initialize() first.')
-      }
-
-      // Verify creator has sufficient SOL
-      const hasEnoughSOL = await this.checkBalance(0.01)
-      if (!hasEnoughSOL) {
-        throw new Error('Insufficient SOL balance for minting. Minimum 0.01 SOL required.')
-      }
-
-      // Create metadata
       const metadata = this.createMetadata(options)
-      console.log('Created metadata:', JSON.stringify(metadata, null, 2))
 
-      // Handle image URL for NFT
       let imageUri: string
-      if (options.useOriginalImage && options.image && options.image.includes('fpoimg.com')) {
-        console.log('Using original FPOImg URL for NFT:', options.image)
+      if (options.useOriginalImage && options.image?.includes('fpoimg.com')) {
         imageUri = options.image
       } else {
-        console.log('Generating new FPOImg URL for NFT...')
         imageUri = await this.getImageUrl(options.prompt || options.name, options.memeText)
-        console.log('Generated NFT image URI:', imageUri)
       }
 
-      // Update metadata with image URI
       metadata.image = imageUri
 
-      // Create metadata URI that works with Phantom wallet
-      console.log('Creating metadata URI...')
-      // Use our own metadata API endpoint for Phantom wallet compatibility
       const metadataId = `${Date.now()}-${encodeURIComponent(options.memeText || options.name || 'AI Meme').substring(0, 20).replace(/\s+/g, '_')}`
       const metadataUri = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/metadata/${metadataId}`
-      console.log('Metadata URI:', metadataUri)
 
-      // Create a real JSON metadata that can be accessed
-      // In production, this would be uploaded to IPFS or Arweave
-      console.log('NFT Metadata ready for Phantom wallet:', {
-        name: metadata.name,
-        image: metadata.image,
-        description: metadata.description,
-        attributes: metadata.attributes
-      })
-
-      // Generate a new mint keypair
       const mint = generateSigner(this.umi)
-
-      // Create the NFT
-      console.log('Creating NFT transaction...')
       const transaction = await createNft(this.umi, {
         mint,
         name: metadata.name,
         symbol: 'AMF',
         uri: metadataUri,
-        sellerFeeBasisPoints: 500 as any, // 5% royalties
+        sellerFeeBasisPoints: 500 as any,
         creators: [
           {
             address: publicKey(options.creatorPublicKey),
@@ -238,19 +191,9 @@ export class NFTService {
         ],
       })
 
-      // Send and confirm the transaction
-      console.log('Sending NFT transaction...')
       const signature = await transaction.sendAndConfirm(this.umi)
-
       const mintAddress = mint.publicKey.toString()
       const signatureString = (signature as any).signature || signature
-
-      console.log('NFT minted successfully:', {
-        name: metadata.name,
-        mintAddress,
-        metadataUri,
-        signature: signatureString,
-      })
 
       return {
         mintAddress,
@@ -258,7 +201,6 @@ export class NFTService {
         signature: signatureString,
       }
     } catch (error) {
-      console.error('Failed to mint NFT:', error)
       throw new Error(`Failed to mint NFT: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }

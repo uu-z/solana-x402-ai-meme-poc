@@ -46,7 +46,7 @@ const NFTMinter = observer(({ memeId, imageUrl, prompt, onMinted }: NFTMinterPro
 
   if (isAlreadyMinted || mintResult) {
     const mintAddress = meme?.nftMintAddress || mintResult?.mintAddress
-    const explorerUrl = mintAddress ? nftService.getExplorerUrl(mintAddress, 'devnet') : ''
+    const solscanUrl = mintAddress ? `https://solscan.io/account/${mintAddress}?cluster=devnet` : ''
 
     return (
       <Card className="border-green-200 bg-green-50">
@@ -89,13 +89,13 @@ const NFTMinter = observer(({ memeId, imageUrl, prompt, onMinted }: NFTMinterPro
           </div>
 
           <a
-            href={explorerUrl}
+            href={solscanUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 hover:underline"
           >
             <ExternalLink className="h-4 w-4" />
-            View on Solana Explorer
+            View on Solscan
           </a>
 
           {meme?.nftMetadataUri && (

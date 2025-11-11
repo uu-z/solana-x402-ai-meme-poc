@@ -6,12 +6,10 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react'
 import { LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, ExternalLink, Sparkles, AlertCircle, Palette, Settings, Gift } from 'lucide-react'
+import { Loader2, ExternalLink, Sparkles, AlertCircle } from 'lucide-react'
 import { memeStore, walletStore } from '@/stores'
 
 interface MemeGeneratorProps {
@@ -102,35 +100,18 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
   }
 
   const generateMemeWithoutPayment = async () => {
-    if (!publicKey) {
-      walletStore.setWalletError('Please connect your wallet first')
-      return
-    }
-
-    if (!memeStore.validateForm()) {
-      return
-    }
+    if (!publicKey || !memeStore.validateForm()) return
 
     try {
-      // Clear any previous errors
       memeStore.clearError()
       walletStore.clearWalletError()
 
-      console.log('🐛 Debug Mode: Generating meme without payment...')
-
-      // Generate mock transaction signature for testing
-      const mockSignature = 'debug_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9)
-
-      // Set transaction signature to show in UI
+      const mockSignature = 'debug_' + Date.now().toString(36)
       setTransactionSignature(mockSignature)
 
-      // Call the API with a special debug flag to skip payment
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Debug-Mode': 'skip-payment'
-        },
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Mode': 'skip-payment' },
         body: JSON.stringify({
           prompt: memeStore.currentPrompt,
           transactionSignature: mockSignature,
@@ -146,8 +127,6 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
       }
 
       const data = await response.json()
-
-      // Create the meme result using x402 standard format
       const newMeme = {
         id: crypto.randomUUID(),
         imageUrl: data.imageUrl,
@@ -155,63 +134,40 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
         prompt: data.prompt,
         transactionSignature: 'DEBUG_' + mockSignature,
         createdAt: new Date(data.timestamp || data.generatedAt),
-        amount: 0, // No actual payment
+        amount: 0,
         model: data.model || memeStore.selectedModel,
         style: data.style || memeStore.selectedStyle,
       }
 
-      // Update the store directly
       memeStore.memes.unshift(newMeme)
       memeStore.currentPrompt = ''
       memeStore.formErrors = {}
       memeStore.isFormValid = false
-
-      // Save to localStorage
       memeStore.saveToStorage()
 
-      console.log('✅ Debug Mode: Meme generated successfully!')
-
-      // Notify parent component
       if (newMeme.imageUrl) {
         onMemeGenerated(newMeme.imageUrl)
       }
 
     } catch (err: any) {
-      console.error('Error generating meme (debug mode):', err)
-      memeStore.clearError()
-      walletStore.setWalletError(err.message || 'Failed to generate meme in debug mode. Please try again.')
+      console.error('Debug mode error:', err)
+      walletStore.setWalletError(err.message || 'Debug mode failed')
     }
   }
 
   const testPaymentFailure = async () => {
-    if (!publicKey) {
-      walletStore.setWalletError('Please connect your wallet first')
-      return
-    }
-
-    if (!memeStore.validateForm()) {
-      return
-    }
+    if (!publicKey || !memeStore.validateForm()) return
 
     try {
-      // Clear any previous errors
       memeStore.clearError()
       walletStore.clearWalletError()
 
-      console.log('❌ Debug Mode: Testing payment failure scenario...')
-
-      // Generate a fake transaction signature that will fail verification
-      const fakeSignature = 'fake_tx_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9)
-
-      // Set transaction signature to show in UI
+      const fakeSignature = 'fake_tx_' + Date.now().toString(36)
       setTransactionSignature(fakeSignature)
 
-      // Call the API normally, but with a fake signature that will fail x402 verification
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: memeStore.currentPrompt,
           transactionSignature: fakeSignature,
@@ -222,28 +178,14 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
 
       const data = await response.json()
 
-      console.log('📋 Debug: Payment failure test response:', {
-        status: response.status,
-        success: data.success,
-        error: data.error,
-        code: data.code,
-        protocol: data.protocol
-      })
-
-      // We expect this to fail with a 402 Payment Required or similar error
       if (response.status === 402 || data.code === 'PAYMENT_VERIFICATION_FAILED') {
-        console.log('✅ Debug: Payment failure test successful - x402 protocol working correctly')
-
-        // Show a success message to the user about the test
-        walletStore.setWalletError('✅ Debug test successful: Payment verification correctly blocked invalid transaction. This is expected behavior.')
+        walletStore.setWalletError('✅ Debug test successful: Payment verification working correctly')
       } else {
-        console.warn('⚠️ Debug: Unexpected response in payment failure test')
-        walletStore.setWalletError(`Debug test completed. Response: ${data.error || 'Unknown'} (Status: ${response.status})`)
+        walletStore.setWalletError(`Debug test result: ${data.error || 'Unknown'} (${response.status})`)
       }
 
     } catch (err: any) {
-      console.error('Error testing payment failure:', err)
-      walletStore.setWalletError(`Debug test error: ${err.message || 'Unknown error'}`)
+      walletStore.setWalletError(`Debug test error: ${err.message || 'Unknown'}`)
     }
   }
 
