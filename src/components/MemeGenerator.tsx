@@ -99,96 +99,7 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
     }
   }
 
-  const generateMemeWithoutPayment = async () => {
-    if (!publicKey || !memeStore.validateForm()) return
-
-    try {
-      memeStore.clearError()
-      walletStore.clearWalletError()
-
-      const mockSignature = 'debug_' + Date.now().toString(36)
-      setTransactionSignature(mockSignature)
-
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Mode': 'skip-payment' },
-        body: JSON.stringify({
-          prompt: memeStore.currentPrompt,
-          transactionSignature: mockSignature,
-          userWallet: publicKey.toBase58(),
-          debug: true,
-          skipPayment: true
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to generate meme')
-      }
-
-      const data = await response.json()
-      const newMeme = {
-        id: crypto.randomUUID(),
-        imageUrl: data.imageUrl,
-        memeText: data.memeText,
-        prompt: data.prompt,
-        transactionSignature: 'DEBUG_' + mockSignature,
-        createdAt: new Date(data.timestamp || data.generatedAt),
-        amount: 0,
-        model: data.model || memeStore.selectedModel,
-        style: data.style || memeStore.selectedStyle,
-      }
-
-      memeStore.memes.unshift(newMeme)
-      memeStore.currentPrompt = ''
-      memeStore.formErrors = {}
-      memeStore.isFormValid = false
-      memeStore.saveToStorage()
-
-      if (newMeme.imageUrl) {
-        onMemeGenerated(newMeme.imageUrl)
-      }
-
-    } catch (err: any) {
-      console.error('Debug mode error:', err)
-      walletStore.setWalletError(err.message || 'Debug mode failed')
-    }
-  }
-
-  const testPaymentFailure = async () => {
-    if (!publicKey || !memeStore.validateForm()) return
-
-    try {
-      memeStore.clearError()
-      walletStore.clearWalletError()
-
-      const fakeSignature = 'fake_tx_' + Date.now().toString(36)
-      setTransactionSignature(fakeSignature)
-
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: memeStore.currentPrompt,
-          transactionSignature: fakeSignature,
-          userWallet: publicKey.toBase58(),
-          testFailure: true
-        }),
-      })
-
-      const data = await response.json()
-
-      if (response.status === 402 || data.code === 'PAYMENT_VERIFICATION_FAILED') {
-        walletStore.setWalletError('✅ Debug test successful: Payment verification working correctly')
-      } else {
-        walletStore.setWalletError(`Debug test result: ${data.error || 'Unknown'} (${response.status})`)
-      }
-
-    } catch (err: any) {
-      walletStore.setWalletError(`Debug test error: ${err.message || 'Unknown'}`)
-    }
-  }
-
+  
   return (
     <Card className="w-full max-w-md mx-auto border-2 border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50/50 to-blue-50/50 dark:from-purple-950/20 dark:to-blue-950/20 backdrop-blur-sm shadow-lg">
       <CardHeader className="bg-gradient-to-r from-purple-100 to-blue-100 dark:from-purple-900/30 dark:to-blue-900/30 pb-4">
@@ -272,35 +183,7 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
           </p>
         )}
 
-        {/* Debug Mode - Development Tools */}
-        {publicKey && process.env.NODE_ENV === 'development' && (
-          <div className="space-y-3">
-            <Button
-              onClick={generateMemeWithoutPayment}
-              disabled={memeStore.isGenerating || !memeStore.isFormValid}
-              variant="outline"
-              className="w-full h-10 text-sm font-medium border-2 border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-300 hover:bg-orange-100/50 dark:hover:bg-orange-900/30 transition-all duration-300"
-            >
-              <span className="mr-2">🐛</span>
-              Debug: Skip Payment (Dev Only)
-            </Button>
-
-            <Button
-              onClick={testPaymentFailure}
-              disabled={memeStore.isGenerating || !memeStore.isFormValid}
-              variant="outline"
-              className="w-full h-10 text-sm font-medium border-2 border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20 text-red-700 dark:text-red-300 hover:bg-red-100/50 dark:hover:bg-red-900/30 transition-all duration-300"
-            >
-              <span className="mr-2">❌</span>
-              Debug: Test Payment Failure
-            </Button>
-
-            <p className="text-xs text-center text-muted-foreground">
-              Development tools for testing payment flows
-            </p>
-          </div>
-        )}
-
+  
         {/* Transaction Confirmation */}
         {transactionSignature && (
           <Alert>
