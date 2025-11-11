@@ -147,17 +147,28 @@ Generate AI meme after payment verification.
 }
 ```
 
-**Response:**
+**Response (x402 Protocol Standard):**
 ```json
 {
   "success": true,
   "imageUrl": "https://example.com/meme.png",
   "memeText": "Generated meme caption",
+  "prompt": "A cat working from home",
+  "model": "sdxl",
+  "style": "meme",
+  "width": 1024,
+  "height": 1024,
   "paymentVerified": {
     "signature": "tx_signature_here",
     "amount": 0.01,
-    "timestamp": 1234567890
-  }
+    "timestamp": 1234567890,
+    "verifiedAt": "2024-01-01T12:00:00.000Z",
+    "protocol": "x402",
+    "network": "devnet",
+    "sender": "user_wallet_address",
+    "recipient": "recipient_wallet_address"
+  },
+  "generatedAt": "2024-01-01T12:00:00.000Z"
 }
 ```
 

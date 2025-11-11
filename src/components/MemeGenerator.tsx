@@ -9,8 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Loader2, ExternalLink, Sparkles, AlertCircle } from 'lucide-react'
+import { Loader2, ExternalLink, Sparkles, AlertCircle, Palette, Settings, Gift } from 'lucide-react'
 import { memeStore, walletStore } from '@/stores'
 
 interface MemeGeneratorProps {
@@ -37,7 +38,7 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
       memeStore.clearError()
       walletStore.clearWalletError()
 
-      // Step 1: Create and send payment transaction (x402 simulation)
+      // Step 1: Create and send payment transaction (x402 protocol)
       const paymentAmount = 0.01 // 0.01 SOL
       const recipientAddress = new PublicKey(process.env.NEXT_PUBLIC_RECIPIENT_WALLET || '4YweNXQbjMMDnD2sBG5FSWDP5mnqeu1gmCm48r4WV9q3')
 
@@ -61,6 +62,7 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
       const latestBlockhash = await connection.getLatestBlockhash()
       const confirmation = await connection.confirmTransaction({
         signature,
+        blockhash: latestBlockhash.blockhash,
         lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
         abortSignal: AbortSignal.timeout(30000), // 30 second timeout
       })
@@ -76,7 +78,8 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
       await memeStore.generateMeme(
         memeStore.currentPrompt,
         signature,
-        publicKey.toBase58()
+        publicKey.toBase58(),
+        {}
       )
 
       // Get the latest generated meme and notify parent
@@ -98,35 +101,192 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
     }
   }
 
+  const generateMemeWithoutPayment = async () => {
+    if (!publicKey) {
+      walletStore.setWalletError('Please connect your wallet first')
+      return
+    }
+
+    if (!memeStore.validateForm()) {
+      return
+    }
+
+    try {
+      // Clear any previous errors
+      memeStore.clearError()
+      walletStore.clearWalletError()
+
+      console.log('🐛 Debug Mode: Generating meme without payment...')
+
+      // Generate mock transaction signature for testing
+      const mockSignature = 'debug_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9)
+
+      // Set transaction signature to show in UI
+      setTransactionSignature(mockSignature)
+
+      // Call the API with a special debug flag to skip payment
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-Mode': 'skip-payment'
+        },
+        body: JSON.stringify({
+          prompt: memeStore.currentPrompt,
+          transactionSignature: mockSignature,
+          userWallet: publicKey.toBase58(),
+          debug: true,
+          skipPayment: true
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to generate meme')
+      }
+
+      const data = await response.json()
+
+      // Create the meme result using x402 standard format
+      const newMeme = {
+        id: crypto.randomUUID(),
+        imageUrl: data.imageUrl,
+        memeText: data.memeText,
+        prompt: data.prompt,
+        transactionSignature: 'DEBUG_' + mockSignature,
+        createdAt: new Date(data.timestamp || data.generatedAt),
+        amount: 0, // No actual payment
+        model: data.model || memeStore.selectedModel,
+        style: data.style || memeStore.selectedStyle,
+      }
+
+      // Update the store directly
+      memeStore.memes.unshift(newMeme)
+      memeStore.currentPrompt = ''
+      memeStore.formErrors = {}
+      memeStore.isFormValid = false
+
+      // Save to localStorage
+      memeStore.saveToStorage()
+
+      console.log('✅ Debug Mode: Meme generated successfully!')
+
+      // Notify parent component
+      if (newMeme.imageUrl) {
+        onMemeGenerated(newMeme.imageUrl)
+      }
+
+    } catch (err: any) {
+      console.error('Error generating meme (debug mode):', err)
+      memeStore.clearError()
+      walletStore.setWalletError(err.message || 'Failed to generate meme in debug mode. Please try again.')
+    }
+  }
+
+  const testPaymentFailure = async () => {
+    if (!publicKey) {
+      walletStore.setWalletError('Please connect your wallet first')
+      return
+    }
+
+    if (!memeStore.validateForm()) {
+      return
+    }
+
+    try {
+      // Clear any previous errors
+      memeStore.clearError()
+      walletStore.clearWalletError()
+
+      console.log('❌ Debug Mode: Testing payment failure scenario...')
+
+      // Generate a fake transaction signature that will fail verification
+      const fakeSignature = 'fake_tx_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9)
+
+      // Set transaction signature to show in UI
+      setTransactionSignature(fakeSignature)
+
+      // Call the API normally, but with a fake signature that will fail x402 verification
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: memeStore.currentPrompt,
+          transactionSignature: fakeSignature,
+          userWallet: publicKey.toBase58(),
+          testFailure: true
+        }),
+      })
+
+      const data = await response.json()
+
+      console.log('📋 Debug: Payment failure test response:', {
+        status: response.status,
+        success: data.success,
+        error: data.error,
+        code: data.code,
+        protocol: data.protocol
+      })
+
+      // We expect this to fail with a 402 Payment Required or similar error
+      if (response.status === 402 || data.code === 'PAYMENT_VERIFICATION_FAILED') {
+        console.log('✅ Debug: Payment failure test successful - x402 protocol working correctly')
+
+        // Show a success message to the user about the test
+        walletStore.setWalletError('✅ Debug test successful: Payment verification correctly blocked invalid transaction. This is expected behavior.')
+      } else {
+        console.warn('⚠️ Debug: Unexpected response in payment failure test')
+        walletStore.setWalletError(`Debug test completed. Response: ${data.error || 'Unknown'} (Status: ${response.status})`)
+      }
+
+    } catch (err: any) {
+      console.error('Error testing payment failure:', err)
+      walletStore.setWalletError(`Debug test error: ${err.message || 'Unknown error'}`)
+    }
+  }
+
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5" />
-          Create Your AI Meme
+    <Card className="w-full max-w-md mx-auto border-2 border-purple-200 dark:border-purple-800 bg-gradient-to-br from-purple-50/50 to-blue-50/50 dark:from-purple-950/20 dark:to-blue-950/20 backdrop-blur-sm shadow-lg">
+      <CardHeader className="bg-gradient-to-r from-purple-100 to-blue-100 dark:from-purple-900/30 dark:to-blue-900/30 pb-4">
+        <CardTitle className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
+          <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
+            <Sparkles className="h-4 w-4 text-white" />
+          </div>
+          <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent font-bold">
+            Create Your AI Meme
+          </span>
         </CardTitle>
-        <CardDescription>
-          Enter a creative prompt and pay 0.01 SOL to generate a unique AI-powered meme
+        <CardDescription className="text-purple-600 dark:text-purple-400 font-medium">
+          🎨 AI-powered • ⚡ Instant • 🪙 0.01 SOL
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6 p-6">
         {/* Prompt Input */}
-        <div className="space-y-2">
-          <Label htmlFor="prompt">Meme Prompt</Label>
+        <div className="space-y-3">
+          <Label htmlFor="prompt" className="text-purple-700 dark:text-purple-300 font-semibold">
+            Meme Prompt
+          </Label>
           <Textarea
             id="prompt"
             value={memeStore.currentPrompt}
             onChange={(e) => memeStore.setCurrentPrompt(e.target.value)}
             placeholder="e.g., A cat working from home with coffee, distracted by a laser pointer"
-            className="min-h-[80px]"
+            className="min-h-[100px] border-purple-200 dark:border-purple-700 bg-white/50 dark:bg-purple-950/50 focus:border-purple-400 dark:focus:border-purple-600 focus:ring-purple-400/20 transition-all duration-200"
             disabled={memeStore.isGenerating}
           />
           {memeStore.formErrors.prompt && (
-            <p className="text-sm text-destructive flex items-center gap-1">
-              <AlertCircle className="h-4 w-4" />
-              {memeStore.formErrors.prompt}
-            </p>
+            <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <AlertCircle className="h-4 w-4 text-red-500" />
+              <p className="text-sm text-red-700 dark:text-red-400">
+                {memeStore.formErrors.prompt}
+              </p>
+            </div>
           )}
+          <p className="text-xs text-muted-foreground">
+            💡 Be creative! The more specific your prompt, the better the result.
+          </p>
         </div>
 
         {/* Wallet Error */}
@@ -149,20 +309,55 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
         <Button
           onClick={generateMeme}
           disabled={memeStore.isGenerating || !memeStore.isFormValid || !publicKey}
-          className="w-full"
+          className="w-full h-12 text-base font-semibold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {memeStore.isGenerating ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Generating Meme...
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              <span>Creating Your Meme...</span>
             </>
           ) : (
             <>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Generate Meme (0.01 SOL)
+              <Sparkles className="mr-2 h-5 w-5" />
+              <span>Generate AI Meme (0.01 SOL)</span>
             </>
           )}
         </Button>
+
+        {!publicKey && (
+          <p className="text-center text-sm text-amber-600 dark:text-amber-400 font-medium">
+            ⚠️ Connect your wallet to start creating
+          </p>
+        )}
+
+        {/* Debug Mode - Development Tools */}
+        {publicKey && process.env.NODE_ENV === 'development' && (
+          <div className="space-y-3">
+            <Button
+              onClick={generateMemeWithoutPayment}
+              disabled={memeStore.isGenerating || !memeStore.isFormValid}
+              variant="outline"
+              className="w-full h-10 text-sm font-medium border-2 border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20 text-orange-700 dark:text-orange-300 hover:bg-orange-100/50 dark:hover:bg-orange-900/30 transition-all duration-300"
+            >
+              <span className="mr-2">🐛</span>
+              Debug: Skip Payment (Dev Only)
+            </Button>
+
+            <Button
+              onClick={testPaymentFailure}
+              disabled={memeStore.isGenerating || !memeStore.isFormValid}
+              variant="outline"
+              className="w-full h-10 text-sm font-medium border-2 border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20 text-red-700 dark:text-red-300 hover:bg-red-100/50 dark:hover:bg-red-900/30 transition-all duration-300"
+            >
+              <span className="mr-2">❌</span>
+              Debug: Test Payment Failure
+            </Button>
+
+            <p className="text-xs text-center text-muted-foreground">
+              Development tools for testing payment flows
+            </p>
+          </div>
+        )}
 
         {/* Transaction Confirmation */}
         {transactionSignature && (
@@ -197,7 +392,8 @@ const MemeGenerator = observer(({ onMemeGenerated }: MemeGeneratorProps) => {
         <div className="text-xs text-muted-foreground text-center space-y-1">
           <p>💰 Payment: 0.01 SOL (Devnet)</p>
           <p>🤖 AI Generation via x402 Protocol</p>
-          <p>⚡ Instant verification on Solana blockchain</p>
+          <p>⚡ Real-time Solana blockchain verification</p>
+          <p>🔒 All transactions are real and on-chain</p>
         </div>
       </CardContent>
     </Card>
